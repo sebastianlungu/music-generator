@@ -1,0 +1,31 @@
+{
+  "key": "C major",
+  "tempo": 120.0,
+  "time_signature": [
+    4,
+    4
+  ],
+  "duration_seconds": 0.0,
+  "pitch_histogram": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "note_density": 0.0,
+  "sections": [
+    [
+      0.0,
+      0.0
+    ]
+  ],
+  "instrument_programs": []
+}

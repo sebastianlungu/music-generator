@@ -6,15 +6,21 @@ key, tempo, time signature, and other musical features.
 """
 
 import pytest
-import numpy as np
-import pretty_midi
 
 from musicgen.analysis import (
-    analyze_midi_file, detect_key, detect_tempo, detect_time_signature,
-    calculate_pitch_histogram, calculate_note_density, detect_sections,
-    get_instrument_programs
+    analyze_midi_file,
+    calculate_note_density,
+    calculate_pitch_histogram,
+    detect_key,
+    detect_sections,
+    detect_tempo,
+    detect_time_signature,
+    get_instrument_programs,
 )
 from musicgen.config import AnalysisResult
+
+# Import pretty_midi from our module (which includes mock support)
+from musicgen.io_files import pretty_midi
 
 
 def create_test_midi(
@@ -22,7 +28,7 @@ def create_test_midi(
     tempo: float = 120.0,
     time_signature: tuple = (4, 4),
     duration: float = 4.0,
-    notes: list = None
+    notes: list = None,
 ) -> pretty_midi.PrettyMIDI:
     """
     Create a test MIDI file with specified parameters.
@@ -60,10 +66,7 @@ def create_test_midi(
 
     for pitch, start, end in notes:
         note = pretty_midi.Note(
-            velocity=80,
-            pitch=pitch,
-            start=start,
-            end=min(end, duration)
+            velocity=80, pitch=pitch, start=start, end=min(end, duration)
         )
         instrument.notes.append(note)
 
@@ -92,10 +95,10 @@ class TestAnalysis:
         """Test key detection for C major."""
         # Create MIDI with strong C major characteristics
         notes = [
-            (60, 0.0, 1.0),    # C
-            (64, 1.0, 2.0),    # E
-            (67, 2.0, 3.0),    # G
-            (72, 3.0, 4.0),    # C
+            (60, 0.0, 1.0),  # C
+            (64, 1.0, 2.0),  # E
+            (67, 2.0, 3.0),  # G
+            (72, 3.0, 4.0),  # C
         ]
         midi_data = create_test_midi(notes=notes)
         key = detect_key(midi_data)
@@ -151,7 +154,9 @@ class TestAnalysis:
         sections = detect_sections(midi_data)
 
         assert len(sections) > 0
-        assert all(isinstance(section, tuple) and len(section) == 2 for section in sections)
+        assert all(
+            isinstance(section, tuple) and len(section) == 2 for section in sections
+        )
         assert all(start < end for start, end in sections)
 
     def test_get_instrument_programs(self):
@@ -228,10 +233,7 @@ class TestAnalysisEdgeCases:
         # Add notes with regular spacing
         for i in range(4):
             note = pretty_midi.Note(
-                velocity=80,
-                pitch=60,
-                start=i * 0.5,
-                end=i * 0.5 + 0.4
+                velocity=80, pitch=60, start=i * 0.5, end=i * 0.5 + 0.4
             )
             instrument.notes.append(note)
 
@@ -247,19 +249,14 @@ class TestAnalysisEdgeCases:
 
         # Add notes with unusual properties
         unusual_notes = [
-            (0, 0.0, 1.0),      # Very low pitch
-            (127, 1.0, 2.0),    # Very high pitch
-            (60, 2.0, 2.0),     # Zero duration
-            (60, 3.0, 2.5),     # Negative duration (end < start)
+            (0, 0.0, 1.0),  # Very low pitch
+            (127, 1.0, 2.0),  # Very high pitch
+            (60, 2.0, 2.0),  # Zero duration
+            (60, 3.0, 2.5),  # Negative duration (end < start)
         ]
 
         for pitch, start, end in unusual_notes:
-            note = pretty_midi.Note(
-                velocity=80,
-                pitch=pitch,
-                start=start,
-                end=end
-            )
+            note = pretty_midi.Note(velocity=80, pitch=pitch, start=start, end=end)
             instrument.notes.append(note)
 
         midi_data.instruments.append(instrument)

@@ -11,16 +11,28 @@ This module provides functions for analyzing MIDI files to extract:
 - Instrument usage
 """
 
-from typing import List, Tuple, Optional
 import numpy as np
-import pretty_midi
-from music21 import stream, meter, key, analysis, interval
-from music21.midi import MidiFile
+from music21 import stream
+
+# Import pretty_midi from io_files which has unified mock handling
+from .io_files import PRETTY_MIDI_AVAILABLE, pretty_midi
+
+# Add missing mock attributes for analysis module
+if not PRETTY_MIDI_AVAILABLE:
+    # Enhance mock with analysis-specific attributes
+    class MockTimeSignature:
+        def __init__(self, *args, **kwargs):
+            self.numerator = 4
+            self.denominator = 4
+
+    # Add time signature support to mock
+    pretty_midi.TimeSignature = MockTimeSignature
+    pretty_midi.note_number_to_name = lambda x: "C"
 
 from .config import AnalysisResult
 
 
-def detect_key(midi_data: pretty_midi.PrettyMIDI) -> str:
+def detect_key(midi_data: "pretty_midi.PrettyMIDI") -> str:
     """
     Detect the key of a MIDI file using music21's key detection.
 
@@ -35,7 +47,7 @@ def detect_key(midi_data: pretty_midi.PrettyMIDI) -> str:
         midi_stream = _pretty_midi_to_music21_stream(midi_data)
 
         # Use music21's key detection
-        detected_key = midi_stream.analyze('key')
+        detected_key = midi_stream.analyze("key")
 
         if detected_key is not None:
             return str(detected_key)
@@ -48,7 +60,9 @@ def detect_key(midi_data: pretty_midi.PrettyMIDI) -> str:
         return _detect_key_from_pitch_classes(midi_data)
 
 
-def _pretty_midi_to_music21_stream(midi_data: pretty_midi.PrettyMIDI) -> stream.Stream:
+def _pretty_midi_to_music21_stream(
+    midi_data: "pretty_midi.PrettyMIDI",
+) -> stream.Stream:
     """Convert PrettyMIDI to music21 stream for analysis."""
     s = stream.Stream()
 
@@ -67,7 +81,7 @@ def _pretty_midi_to_music21_stream(midi_data: pretty_midi.PrettyMIDI) -> stream.
     return s
 
 
-def _detect_key_from_pitch_classes(midi_data: pretty_midi.PrettyMIDI) -> str:
+def _detect_key_from_pitch_classes(midi_data: "pretty_midi.PrettyMIDI") -> str:
     """
     Detect key using pitch class histogram analysis.
 
@@ -94,8 +108,12 @@ def _detect_key_from_pitch_classes(midi_data: pretty_midi.PrettyMIDI) -> str:
         pitch_classes = pitch_classes / pitch_classes.sum()
 
     # Major key templates (Krumhansl-Schmuckler)
-    major_template = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-    minor_template = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+    major_template = np.array(
+        [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+    )
+    minor_template = np.array(
+        [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+    )
 
     # Normalize templates
     major_template = major_template / major_template.sum()
@@ -110,7 +128,20 @@ def _detect_key_from_pitch_classes(midi_data: pretty_midi.PrettyMIDI) -> str:
         correlation = np.corrcoef(pitch_classes, rotated_template)[0, 1]
         if correlation > best_correlation:
             best_correlation = correlation
-            key_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+            key_names = [
+                "C",
+                "C#",
+                "D",
+                "D#",
+                "E",
+                "F",
+                "F#",
+                "G",
+                "G#",
+                "A",
+                "A#",
+                "B",
+            ]
             best_key = f"{key_names[i]} major"
 
     # Check all minor keys
@@ -119,13 +150,26 @@ def _detect_key_from_pitch_classes(midi_data: pretty_midi.PrettyMIDI) -> str:
         correlation = np.corrcoef(pitch_classes, rotated_template)[0, 1]
         if correlation > best_correlation:
             best_correlation = correlation
-            key_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+            key_names = [
+                "C",
+                "C#",
+                "D",
+                "D#",
+                "E",
+                "F",
+                "F#",
+                "G",
+                "G#",
+                "A",
+                "A#",
+                "B",
+            ]
             best_key = f"{key_names[i]} minor"
 
     return best_key
 
 
-def detect_tempo(midi_data: pretty_midi.PrettyMIDI) -> float:
+def detect_tempo(midi_data: "pretty_midi.PrettyMIDI") -> float:
     """
     Detect the tempo of a MIDI file.
 
@@ -145,7 +189,7 @@ def detect_tempo(midi_data: pretty_midi.PrettyMIDI) -> float:
     return _estimate_tempo_from_onsets(midi_data)
 
 
-def _estimate_tempo_from_onsets(midi_data: pretty_midi.PrettyMIDI) -> float:
+def _estimate_tempo_from_onsets(midi_data: "pretty_midi.PrettyMIDI") -> float:
     """
     Estimate tempo from note onset patterns.
 
@@ -192,7 +236,7 @@ def _estimate_tempo_from_onsets(midi_data: pretty_midi.PrettyMIDI) -> float:
     return float(tempo)
 
 
-def detect_time_signature(midi_data: pretty_midi.PrettyMIDI) -> Tuple[int, int]:
+def detect_time_signature(midi_data: "pretty_midi.PrettyMIDI") -> tuple[int, int]:
     """
     Detect time signature of a MIDI file.
 
@@ -210,7 +254,9 @@ def detect_time_signature(midi_data: pretty_midi.PrettyMIDI) -> Tuple[int, int]:
     return _estimate_time_signature_from_beats(midi_data)
 
 
-def _estimate_time_signature_from_beats(midi_data: pretty_midi.PrettyMIDI) -> Tuple[int, int]:
+def _estimate_time_signature_from_beats(
+    midi_data: "pretty_midi.PrettyMIDI",
+) -> tuple[int, int]:
     """
     Estimate time signature from beat patterns.
 
@@ -243,7 +289,9 @@ def _estimate_time_signature_from_beats(midi_data: pretty_midi.PrettyMIDI) -> Tu
     four_four_strength = onset_bins[0] + onset_bins[4] + onset_bins[8] + onset_bins[12]
 
     # 3/4: strong beats at 0, 3, 6, 9, 12
-    three_four_strength = onset_bins[0] + onset_bins[3] + onset_bins[6] + onset_bins[9] + onset_bins[12]
+    three_four_strength = (
+        onset_bins[0] + onset_bins[3] + onset_bins[6] + onset_bins[9] + onset_bins[12]
+    )
 
     # 6/8: strong beats at 0, 6, 12
     six_eight_strength = onset_bins[0] + onset_bins[6] + onset_bins[12]
@@ -256,7 +304,7 @@ def _estimate_time_signature_from_beats(midi_data: pretty_midi.PrettyMIDI) -> Tu
         return (4, 4)
 
 
-def calculate_pitch_histogram(midi_data: pretty_midi.PrettyMIDI) -> List[float]:
+def calculate_pitch_histogram(midi_data: "pretty_midi.PrettyMIDI") -> list[float]:
     """
     Calculate pitch class histogram.
 
@@ -284,7 +332,7 @@ def calculate_pitch_histogram(midi_data: pretty_midi.PrettyMIDI) -> List[float]:
     return pitch_classes.tolist()
 
 
-def calculate_note_density(midi_data: pretty_midi.PrettyMIDI) -> float:
+def calculate_note_density(midi_data: "pretty_midi.PrettyMIDI") -> float:
     """
     Calculate average note density (notes per second).
 
@@ -308,7 +356,7 @@ def calculate_note_density(midi_data: pretty_midi.PrettyMIDI) -> float:
     return total_notes / total_duration
 
 
-def detect_sections(midi_data: pretty_midi.PrettyMIDI) -> List[Tuple[float, float]]:
+def detect_sections(midi_data: "pretty_midi.PrettyMIDI") -> list[tuple[float, float]]:
     """
     Detect musical sections using novelty detection.
 
@@ -348,7 +396,7 @@ def detect_sections(midi_data: pretty_midi.PrettyMIDI) -> List[Tuple[float, floa
     return merged_sections if merged_sections else [(0.0, total_duration)]
 
 
-def get_instrument_programs(midi_data: pretty_midi.PrettyMIDI) -> List[int]:
+def get_instrument_programs(midi_data: "pretty_midi.PrettyMIDI") -> list[int]:
     """
     Get list of instrument programs used in the MIDI file.
 
@@ -366,7 +414,7 @@ def get_instrument_programs(midi_data: pretty_midi.PrettyMIDI) -> List[int]:
     return sorted(list(set(programs)))
 
 
-def analyze_midi_file(midi_data: pretty_midi.PrettyMIDI) -> AnalysisResult:
+def analyze_midi_file(midi_data: "pretty_midi.PrettyMIDI") -> AnalysisResult:
     """
     Perform complete analysis of a MIDI file.
 
@@ -424,5 +472,5 @@ def analyze_midi_file(midi_data: pretty_midi.PrettyMIDI) -> AnalysisResult:
         pitch_histogram=pitch_histogram,
         note_density=note_density,
         sections=sections,
-        instrument_programs=instrument_programs
+        instrument_programs=instrument_programs,
     )

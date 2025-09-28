@@ -10,13 +10,18 @@ This module coordinates the complete pipeline:
 
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
 
-from .config import MusicGenConfig, AnalysisResult, ArrangementConfig
-from . import io_files
-from . import analysis
-from . import arrange
-from . import synthesis
+from . import analysis, arrange, io_files, synthesis
+from .audio_types import (
+    AudioCapability,
+    create_installation_instructions,
+    get_installation_mode,
+    get_missing_dependencies,
+    is_capability_available,
+    require_capability,
+    validate_export_formats,
+)
+from .config import AnalysisResult, ArrangementConfig, MusicGenConfig
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -29,9 +34,9 @@ class GenerationResult:
         self,
         config: MusicGenConfig,
         analysis_result: AnalysisResult,
-        output_files: Dict[str, Path],
+        output_files: dict[str, Path],
         success: bool = True,
-        error_message: str = ""
+        error_message: str = "",
     ):
         self.config = config
         self.analysis_result = analysis_result
@@ -47,8 +52,7 @@ class GenerationResult:
 
 
 def generate_arrangement(
-    config: MusicGenConfig,
-    arrangement_config: Optional[ArrangementConfig] = None
+    config: MusicGenConfig, arrangement_config: ArrangementConfig | None = None
 ) -> GenerationResult:
     """
     Generate a complete musical arrangement from configuration.
@@ -61,8 +65,20 @@ def generate_arrangement(
 
     Returns:
         GenerationResult containing results and output file paths
+
+    Raises:
+        DependencyError: If required audio capabilities are missing
     """
     logger.info(f"Starting generation with input: {config.input_path}")
+
+    # Validate export formats upfront - fail fast if dependencies missing
+    export_format_strs = [fmt.value for fmt in config.export_formats]
+    validated_formats = validate_export_formats(export_format_strs)
+    logger.debug(f"Validated export formats: {validated_formats}")
+
+    # Log current installation mode
+    installation_mode = get_installation_mode()
+    logger.info(f"Installation mode: {installation_mode}")
 
     try:
         # Discover MIDI files
@@ -80,9 +96,11 @@ def generate_arrangement(
 
         # Analyze MIDI file
         analysis_result = analysis.analyze_midi_file(midi_data)
-        logger.info(f"Analysis complete: Key={analysis_result.key}, "
-                   f"Tempo={analysis_result.tempo:.1f}, "
-                   f"Duration={analysis_result.duration_seconds:.1f}s")
+        logger.info(
+            f"Analysis complete: Key={analysis_result.key}, "
+            f"Tempo={analysis_result.tempo:.1f}, "
+            f"Duration={analysis_result.duration_seconds:.1f}s"
+        )
 
         # Generate arrangement
         logger.info("Generating arrangement...")
@@ -91,42 +109,44 @@ def generate_arrangement(
         )
         logger.info("Arrangement generated successfully")
 
-        # Synthesize audio if possible
-        audio_data = None
-        if config.soundfont_path and synthesis.check_fluidsynth_available():
-            try:
-                logger.info("Synthesizing audio...")
-                audio_data = synthesis.synthesize_midi(generated_midi, config)
-                if audio_data is not None:
-                    logger.info("Audio synthesis complete")
-                else:
-                    logger.warning("Audio synthesis returned no data")
-            except Exception as e:
-                logger.warning(f"Audio synthesis failed: {e}")
-        else:
-            if not config.soundfont_path:
-                logger.info("No SoundFont specified, skipping audio synthesis")
-            if not synthesis.check_fluidsynth_available():
-                logger.info("FluidSynth not available, skipping audio synthesis")
-
         # Create output directory
-        output_dir = io_files.create_output_directory(
-            config.output_dir, input_file
-        )
+        output_dir = io_files.create_output_directory(config.output_dir, input_file)
         logger.info(f"Output directory: {output_dir}")
 
         # Generate rationale text
         rationale = _generate_rationale(config, analysis_result)
 
-        # Write output files
+        # Write MIDI file first (needed for mido-based synthesis)
         output_files = io_files.write_output_files(
-            output_dir,
-            config,
-            analysis_result,
-            generated_midi,
-            audio_data,
-            rationale
+            output_dir, config, analysis_result, generated_midi, None, rationale
         )
+
+        # Synthesize audio if required by export formats
+        audio_data = None
+        needs_audio = any(fmt in ["wav", "mp3"] for fmt in validated_formats)
+
+        if needs_audio:
+            logger.info("Audio synthesis required for requested export formats")
+
+            # Use mido-based synthesis with the saved MIDI file
+            midi_file_path = output_files.get('midi')
+            if midi_file_path and midi_file_path.exists():
+                try:
+                    audio_data = synthesis.synthesize_midi_with_mido(midi_file_path, config.sample_rate)
+                    logger.info("Mido-based audio synthesis complete")
+                except Exception as e:
+                    logger.error(f"Audio synthesis failed: {e}")
+                    raise synthesis.SynthesisError(f"Audio synthesis failed: {e}")
+            else:
+                raise synthesis.SynthesisError("MIDI file not available for synthesis")
+        else:
+            logger.info("No audio synthesis needed (MIDI-only export)")
+
+        # Update output files with audio data if generated
+        if audio_data is not None:
+            output_files = io_files.write_output_files(
+                output_dir, config, analysis_result, generated_midi, audio_data, rationale
+            )
 
         logger.info(f"Generation complete. Files written: {list(output_files.keys())}")
 
@@ -134,7 +154,7 @@ def generate_arrangement(
             config=config,
             analysis_result=analysis_result,
             output_files=output_files,
-            success=True
+            success=True,
         )
 
     except Exception as e:
@@ -149,19 +169,17 @@ def generate_arrangement(
                 pitch_histogram=[0.0] * 12,
                 note_density=0.0,
                 sections=[],
-                instrument_programs=[]
+                instrument_programs=[],
             ),
             output_files={},
             success=False,
-            error_message=str(e)
+            error_message=str(e),
         )
 
 
 def batch_generate(
-    input_directory: Path,
-    output_directory: Path,
-    config_template: MusicGenConfig
-) -> List[GenerationResult]:
+    input_directory: Path, output_directory: Path, config_template: MusicGenConfig
+) -> list[GenerationResult]:
     """
     Generate arrangements for multiple MIDI files in batch.
 
@@ -184,7 +202,7 @@ def batch_generate(
     results = []
 
     for i, midi_file in enumerate(midi_files):
-        logger.info(f"Processing file {i+1}/{len(midi_files)}: {midi_file}")
+        logger.info(f"Processing file {i + 1}/{len(midi_files)}: {midi_file}")
 
         # Create config for this file
         file_config = config_template.copy(deep=True)
@@ -206,10 +224,7 @@ def batch_generate(
     return results
 
 
-def _generate_rationale(
-    config: MusicGenConfig,
-    analysis_result: AnalysisResult
-) -> str:
+def _generate_rationale(config: MusicGenConfig, analysis_result: AnalysisResult) -> str:
     """
     Generate a human-readable rationale for the arrangement choices.
 
@@ -267,8 +282,10 @@ def _generate_rationale(
     # Note density considerations
     if analysis_result.note_density > 0:
         density_description = (
-            "high" if analysis_result.note_density > 5
-            else "moderate" if analysis_result.note_density > 2
+            "high"
+            if analysis_result.note_density > 5
+            else "moderate"
+            if analysis_result.note_density > 2
             else "low"
         )
         rationale_parts.append(
@@ -278,6 +295,69 @@ def _generate_rationale(
         )
 
     return " ".join(rationale_parts)
+
+
+def _log_audio_capabilities_summary(logger: logging.Logger) -> None:
+    """
+    Log a summary of available audio capabilities.
+
+    Args:
+        logger: Logger instance
+    """
+    synthesis_available = is_capability_available(AudioCapability.AUDIO_SYNTHESIS)
+    conversion_available = is_capability_available(AudioCapability.AUDIO_CONVERSION)
+    full_audio_available = is_capability_available(AudioCapability.FULL_AUDIO)
+
+    if full_audio_available:
+        logger.debug("Audio capabilities: Full audio pipeline available")
+    else:
+        capabilities = []
+        if synthesis_available:
+            capabilities.append("synthesis")
+        if conversion_available:
+            capabilities.append("conversion")
+
+        if capabilities:
+            logger.debug(f"Audio capabilities: {', '.join(capabilities)} available")
+        else:
+            logger.debug("Audio capabilities: MIDI-only mode")
+
+
+def get_audio_status() -> dict[str, bool]:
+    """
+    Get the current status of audio capabilities.
+
+    Returns:
+        Dictionary with capability status
+    """
+    return {
+        "midi_only": is_capability_available(AudioCapability.MIDI_ONLY),
+        "audio_synthesis": is_capability_available(AudioCapability.AUDIO_SYNTHESIS),
+        "audio_conversion": is_capability_available(AudioCapability.AUDIO_CONVERSION),
+        "full_audio": is_capability_available(AudioCapability.FULL_AUDIO),
+    }
+
+
+def suggest_audio_setup_improvements() -> list[str]:
+    """
+    Suggest improvements for audio setup.
+
+    Returns:
+        List of suggestion strings
+    """
+    suggestions = []
+
+    if not is_capability_available(AudioCapability.AUDIO_SYNTHESIS):
+        missing_deps = get_missing_dependencies(AudioCapability.AUDIO_SYNTHESIS)
+        suggestions.append(f"For audio synthesis: Install {', '.join(missing_deps)}")
+
+    if not is_capability_available(AudioCapability.AUDIO_CONVERSION):
+        missing_deps = get_missing_dependencies(AudioCapability.AUDIO_CONVERSION)
+        suggestions.append(
+            f"For audio conversion (MP3): Install {', '.join(missing_deps)}"
+        )
+
+    return suggestions
 
 
 def analyze_only(input_path: Path) -> AnalysisResult:
@@ -310,7 +390,7 @@ def analyze_only(input_path: Path) -> AnalysisResult:
     return analysis_result
 
 
-def validate_configuration(config: MusicGenConfig) -> List[str]:
+def validate_configuration(config: MusicGenConfig) -> list[str]:
     """
     Validate configuration and return list of issues.
 
@@ -345,18 +425,32 @@ def validate_configuration(config: MusicGenConfig) -> List[str]:
     except Exception as e:
         issues.append(f"Cannot create output directory: {e}")
 
-    # Check FluidSynth availability if audio synthesis requested
-    if (config.soundfont_path and
-        not synthesis.check_fluidsynth_available()):
-        issues.append(
-            "FluidSynth not available but SoundFont specified. "
-            "Install pyfluidsynth for audio synthesis."
-        )
+    # Check audio synthesis capability if SoundFont specified
+    if config.soundfont_path:
+        if not is_capability_available(AudioCapability.AUDIO_SYNTHESIS):
+            missing_deps = get_missing_dependencies(AudioCapability.AUDIO_SYNTHESIS)
+            issues.append(
+                f"Audio synthesis not available but SoundFont specified. "
+                f"Missing dependencies: {', '.join(missing_deps)}"
+            )
+
+        # Check audio conversion capability if MP3 export requested
+        from .config import ExportFormat
+
+        if ExportFormat.MP3 in config.export_formats:
+            if not is_capability_available(AudioCapability.AUDIO_CONVERSION):
+                missing_deps = get_missing_dependencies(
+                    AudioCapability.AUDIO_CONVERSION
+                )
+                issues.append(
+                    f"MP3 export requested but audio conversion not available. "
+                    f"Missing dependencies: {', '.join(missing_deps)}"
+                )
 
     return issues
 
 
-def get_generation_summary(result: GenerationResult) -> Dict:
+def get_generation_summary(result: GenerationResult) -> dict:
     """
     Get a summary of generation results suitable for display.
 
@@ -367,11 +461,7 @@ def get_generation_summary(result: GenerationResult) -> Dict:
         Dictionary with summary information
     """
     if not result.success:
-        return {
-            "success": False,
-            "error": result.error_message,
-            "files_generated": 0
-        }
+        return {"success": False, "error": result.error_message, "files_generated": 0}
 
     analysis = result.analysis_result
     files_info = {}
@@ -380,7 +470,7 @@ def get_generation_summary(result: GenerationResult) -> Dict:
         files_info[file_type] = {
             "path": str(file_path),
             "exists": file_path.exists(),
-            "size_bytes": file_path.stat().st_size if file_path.exists() else 0
+            "size_bytes": file_path.stat().st_size if file_path.exists() else 0,
         }
 
     return {
@@ -391,15 +481,16 @@ def get_generation_summary(result: GenerationResult) -> Dict:
             "time_signature": f"{analysis.time_signature[0]}/{analysis.time_signature[1]}",
             "duration": round(analysis.duration_seconds, 1),
             "note_density": round(analysis.note_density, 2),
-            "instruments": len(analysis.instrument_programs)
+            "instruments": len(analysis.instrument_programs),
         },
         "generation_config": {
             "target_duration": result.config.duration_seconds,
             "instruments": [inst.value for inst in result.config.instruments],
             "voices": result.config.voices,
             "style": result.config.style,
-            "export_formats": [fmt.value for fmt in result.config.export_formats]
+            "export_formats": [fmt.value for fmt in result.config.export_formats],
         },
         "files_generated": len(result.output_files),
-        "files": files_info
+        "files": files_info,
+        "audio_capabilities": get_audio_status(),
     }

@@ -5,23 +5,31 @@ These tests ensure that arrangement generation produces valid
 musical output within specified parameters.
 """
 
+from pathlib import Path
+
 import pytest
-import pretty_midi
 
 from musicgen.arrange import (
-    generate_arrangement, ScaleGenerator, RhythmGenerator,
-    MelodyGenerator, HarmonyGenerator
+    HarmonyGenerator,
+    MelodyGenerator,
+    RhythmGenerator,
+    ScaleGenerator,
+    generate_arrangement,
 )
 from musicgen.config import (
-    MusicGenConfig, AnalysisResult, Instrument, MusicalKey, ArrangementConfig
+    AnalysisResult,
+    ArrangementConfig,
+    Instrument,
+    MusicalKey,
+    MusicGenConfig,
 )
-from pathlib import Path
+
+# Import pretty_midi from our module (which includes mock support)
+from musicgen.io_files import pretty_midi
 
 
 def create_test_config(
-    duration: int = 30,
-    instruments: list = None,
-    voices: int = 2
+    duration: int = 30, instruments: list = None, voices: int = 2
 ) -> MusicGenConfig:
     """Create a test configuration."""
     if instruments is None:
@@ -33,7 +41,7 @@ def create_test_config(
         instruments=instruments,
         voices=voices,
         style="classical",
-        seed=42
+        seed=42,
     )
 
 
@@ -47,7 +55,7 @@ def create_test_analysis() -> AnalysisResult:
         pitch_histogram=[0.1] * 12,
         note_density=2.0,
         sections=[(0.0, 30.0), (30.0, 60.0)],
-        instrument_programs=[0, 24]
+        instrument_programs=[0, 24],
     )
 
 
@@ -105,9 +113,7 @@ class TestRhythmGenerator:
     def test_generate_basic_rhythm(self):
         """Test basic rhythm generation."""
         rhythm = RhythmGenerator.generate_basic_rhythm(
-            beats_per_measure=4,
-            note_density=2.0,
-            randomness=0.0
+            beats_per_measure=4, note_density=2.0, randomness=0.0
         )
 
         assert len(rhythm) == 8  # 4 beats * 2 notes per beat
@@ -125,15 +131,11 @@ class TestRhythmGenerator:
     def test_generate_rhythm_with_randomness(self):
         """Test rhythm generation with randomness."""
         rhythm1 = RhythmGenerator.generate_basic_rhythm(
-            beats_per_measure=4,
-            note_density=1.0,
-            randomness=0.1
+            beats_per_measure=4, note_density=1.0, randomness=0.1
         )
 
         rhythm2 = RhythmGenerator.generate_basic_rhythm(
-            beats_per_measure=4,
-            note_density=1.0,
-            randomness=0.1
+            beats_per_measure=4, note_density=1.0, randomness=0.1
         )
 
         # With randomness, rhythms should be different
@@ -246,8 +248,7 @@ class TestArrangementGeneration:
     def test_generate_arrangement_with_drums(self):
         """Test arrangement with drums."""
         config = create_test_config(
-            voices=2,
-            instruments=[Instrument.PIANO, Instrument.DRUMS]
+            voices=2, instruments=[Instrument.PIANO, Instrument.DRUMS]
         )
         analysis = create_test_analysis()
 
@@ -287,7 +288,9 @@ class TestArrangementGeneration:
         midi_data = generate_arrangement(config, analysis)
 
         # Should not exceed specified duration
-        assert midi_data.get_end_time() <= config.duration_seconds + 1.0  # Small tolerance
+        assert (
+            midi_data.get_end_time() <= config.duration_seconds + 1.0
+        )  # Small tolerance
 
     def test_generate_arrangement_tempo_override(self):
         """Test arrangement with tempo override."""
@@ -331,7 +334,7 @@ class TestArrangementGeneration:
         # Should have same number of instruments and notes
         assert len(midi_data1.instruments) == len(midi_data2.instruments)
 
-        for inst1, inst2 in zip(midi_data1.instruments, midi_data2.instruments):
+        for inst1, inst2 in zip(midi_data1.instruments, midi_data2.instruments, strict=False):
             assert len(inst1.notes) == len(inst2.notes)
 
     def test_arrangement_note_validity(self):
@@ -356,8 +359,7 @@ class TestArrangementGeneration:
         analysis = create_test_analysis()
 
         arrangement_config = ArrangementConfig(
-            humanization_amount=0.2,
-            voice_leading_strictness=0.8
+            humanization_amount=0.2, voice_leading_strictness=0.8
         )
 
         midi_data = generate_arrangement(config, analysis, arrangement_config)

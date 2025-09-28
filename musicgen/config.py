@@ -5,15 +5,15 @@ This module defines all configuration classes for the MusicGen application,
 including CLI parameters, analysis settings, and generation options.
 """
 
-from pathlib import Path
-from typing import List, Optional, Tuple, Union
 from enum import Enum
+from pathlib import Path
 
 from pydantic import BaseModel, Field, validator
 
 
 class ExportFormat(str, Enum):
     """Available export formats."""
+
     MIDI = "midi"
     WAV = "wav"
     MP3 = "mp3"
@@ -21,6 +21,7 @@ class ExportFormat(str, Enum):
 
 class Instrument(str, Enum):
     """Standard instrument names mapped to General MIDI."""
+
     PIANO = "piano"
     GUITAR = "guitar"
     VIOLIN = "violin"
@@ -41,6 +42,7 @@ class Instrument(str, Enum):
 
 class MusicalKey(str, Enum):
     """Musical keys for arrangement generation."""
+
     C_MAJOR = "C major"
     G_MAJOR = "G major"
     D_MAJOR = "D major"
@@ -75,14 +77,15 @@ class MusicalKey(str, Enum):
 
 class AnalysisResult(BaseModel):
     """Results from MIDI analysis."""
+
     key: str
     tempo: float
-    time_signature: Tuple[int, int]
+    time_signature: tuple[int, int]
     duration_seconds: float
-    pitch_histogram: List[float]
+    pitch_histogram: list[float]
     note_density: float
-    sections: List[Tuple[float, float]]  # (start_time, end_time) pairs
-    instrument_programs: List[int]
+    sections: list[tuple[float, float]]  # (start_time, end_time) pairs
+    instrument_programs: list[int]
 
 
 class MusicGenConfig(BaseModel):
@@ -91,62 +94,41 @@ class MusicGenConfig(BaseModel):
     # Input/Output
     input_path: Path = Field(..., description="Input MIDI file or directory")
     output_dir: Path = Field(
-        default=Path("./out"),
-        description="Output directory for generated files"
+        default=Path("./out"), description="Output directory for generated files"
     )
 
     # Generation parameters
     duration_seconds: int = Field(
-        default=120,
-        ge=10,
-        le=600,
-        description="Maximum duration in seconds"
+        default=120, ge=10, le=600, description="Maximum duration in seconds"
     )
-    instruments: List[Instrument] = Field(
+    instruments: list[Instrument] = Field(
         default=[Instrument.PIANO],
         min_items=1,
         max_items=8,
-        description="Instruments to use in arrangement"
+        description="Instruments to use in arrangement",
     )
-    voices: int = Field(
-        default=1,
-        ge=1,
-        le=8,
-        description="Number of voices/parts"
-    )
-    style: str = Field(
-        default="classical",
-        description="Musical style description"
-    )
+    voices: int = Field(default=1, ge=1, le=8, description="Number of voices/parts")
+    style: str = Field(default="classical", description="Musical style description")
 
     # Musical parameters
-    tempo_bpm: Optional[int] = Field(
-        default=None,
-        ge=60,
-        le=200,
-        description="Fixed tempo in BPM"
+    tempo_bpm: int | None = Field(
+        default=None, ge=60, le=200, description="Fixed tempo in BPM"
     )
-    tempo_range: Optional[Tuple[int, int]] = Field(
-        default=None,
-        description="Tempo range (min, max) in BPM"
+    tempo_range: tuple[int, int] | None = Field(
+        default=None, description="Tempo range (min, max) in BPM"
     )
-    key: Optional[MusicalKey] = Field(
-        default=None,
-        description="Target key (auto-detect if None)"
+    key: MusicalKey | None = Field(
+        default=None, description="Target key (auto-detect if None)"
     )
-    seed: int = Field(
-        default=42,
-        description="Random seed for reproducibility"
-    )
+    seed: int = Field(default=42, description="Random seed for reproducibility")
 
     # Audio rendering
-    soundfont_path: Optional[Path] = Field(
-        default=None,
-        description="Path to SoundFont file (.sf2)"
+    soundfont_path: Path | None = Field(
+        default=None, description="Path to SoundFont file (.sf2)"
     )
-    export_formats: List[ExportFormat] = Field(
+    export_formats: list[ExportFormat] = Field(
         default=[ExportFormat.MIDI, ExportFormat.WAV, ExportFormat.MP3],
-        description="Output formats to generate"
+        description="Output formats to generate",
     )
 
     # Audio quality settings
@@ -186,7 +168,7 @@ class MusicGenConfig(BaseModel):
             raise ValueError(f"SoundFont file does not exist: {v}")
         return v
 
-    def get_effective_tempo(self) -> Union[int, Tuple[int, int]]:
+    def get_effective_tempo(self) -> int | tuple[int, int]:
         """Get the effective tempo setting."""
         if self.tempo_bpm is not None:
             return self.tempo_bpm
@@ -203,23 +185,19 @@ class ArrangementConfig(BaseModel):
             "classical": {
                 "voice_leading": True,
                 "harmonic_rhythm": "moderate",
-                "texture": "polyphonic"
+                "texture": "polyphonic",
             },
             "ambient": {
                 "sustained_chords": True,
                 "sparse_melody": True,
-                "texture": "atmospheric"
+                "texture": "atmospheric",
             },
-            "rock": {
-                "drums": True,
-                "power_chords": True,
-                "texture": "rhythmic"
-            },
+            "rock": {"drums": True, "power_chords": True, "texture": "rhythmic"},
             "jazz": {
                 "extended_harmony": True,
                 "syncopation": True,
-                "texture": "interactive"
-            }
+                "texture": "interactive",
+            },
         }
     )
 
@@ -227,14 +205,14 @@ class ArrangementConfig(BaseModel):
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Amount of timing/velocity humanization"
+        description="Amount of timing/velocity humanization",
     )
 
     voice_leading_strictness: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="How strictly to follow voice leading rules"
+        description="How strictly to follow voice leading rules",
     )
 
 
@@ -247,5 +225,5 @@ class WebUIConfig(BaseModel):
     debug: bool = Field(default=False, description="Enable debug mode")
     upload_max_size: int = Field(
         default=50 * 1024 * 1024,  # 50MB
-        description="Maximum upload file size in bytes"
+        description="Maximum upload file size in bytes",
     )

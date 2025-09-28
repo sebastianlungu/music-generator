@@ -5,15 +5,17 @@ These tests ensure that the CLI can run end-to-end without crashing,
 creating expected output files, and handling basic error cases.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
-import pretty_midi
+
+import pytest
 
 from musicgen.cli import main
-from musicgen.config import ExportFormat
+
+# Import pretty_midi from our module (which includes mock support)
+from musicgen.io_files import pretty_midi
 
 
 def create_test_midi_file(file_path: Path) -> None:
@@ -21,9 +23,7 @@ def create_test_midi_file(file_path: Path) -> None:
     midi_data = pretty_midi.PrettyMIDI(initial_tempo=120)
 
     # Add time signature
-    midi_data.time_signature_changes.append(
-        pretty_midi.TimeSignature(4, 4, 0)
-    )
+    midi_data.time_signature_changes.append(pretty_midi.TimeSignature(4, 4, 0))
 
     # Create piano instrument
     piano = pretty_midi.Instrument(program=0)
@@ -32,10 +32,7 @@ def create_test_midi_file(file_path: Path) -> None:
     scale_notes = [60, 62, 64, 65, 67, 69, 71, 72]
     for i, pitch in enumerate(scale_notes):
         note = pretty_midi.Note(
-            velocity=80,
-            pitch=pitch,
-            start=i * 0.5,
-            end=i * 0.5 + 0.4
+            velocity=80, pitch=pitch, start=i * 0.5, end=i * 0.5 + 0.4
         )
         piano.notes.append(note)
 
@@ -56,11 +53,7 @@ def temp_workspace():
     output_dir = temp_dir / "output"
     output_dir.mkdir()
 
-    yield {
-        "temp_dir": temp_dir,
-        "test_midi": test_midi,
-        "output_dir": output_dir
-    }
+    yield {"temp_dir": temp_dir, "test_midi": test_midi, "output_dir": output_dir}
 
     # Cleanup
     shutil.rmtree(temp_dir)
@@ -79,11 +72,16 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--duration-seconds", "10",
-            "--instruments", "piano",
-            "--voices", "1",
-            "--export", "midi",  # Only MIDI to avoid audio dependencies
+            "--output",
+            str(output_dir),
+            "--duration-seconds",
+            "10",
+            "--instruments",
+            "piano",
+            "--voices",
+            "1",
+            "--export",
+            "midi",  # Only MIDI to avoid audio dependencies
         ]
 
         with patch("sys.argv", test_args):
@@ -115,12 +113,18 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--duration-seconds", "15",
-            "--instruments", "piano,guitar,violin",
-            "--voices", "3",
-            "--style", "classical",
-            "--export", "midi",
+            "--output",
+            str(output_dir),
+            "--duration-seconds",
+            "15",
+            "--instruments",
+            "piano,guitar,violin",
+            "--voices",
+            "3",
+            "--style",
+            "classical",
+            "--export",
+            "midi",
         ]
 
         with patch("sys.argv", test_args):
@@ -142,9 +146,12 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--tempo-range", "100:140",
-            "--export", "midi",
+            "--output",
+            str(output_dir),
+            "--tempo-range",
+            "100:140",
+            "--export",
+            "midi",
         ]
 
         with patch("sys.argv", test_args):
@@ -162,9 +169,12 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--key", "A minor",
-            "--export", "midi",
+            "--output",
+            str(output_dir),
+            "--key",
+            "A minor",
+            "--export",
+            "midi",
         ]
 
         with patch("sys.argv", test_args):
@@ -183,7 +193,8 @@ class TestCLISmoke:
             "musicgen",
             "analyze",
             str(test_midi),
-            "--output", str(output_json),
+            "--output",
+            str(output_json),
         ]
 
         with patch("sys.argv", test_args):
@@ -197,6 +208,7 @@ class TestCLISmoke:
 
         # Check that JSON is valid
         import json
+
         with open(output_json) as f:
             analysis_data = json.load(f)
 
@@ -223,7 +235,8 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(nonexistent_file),
-            "--output", str(output_dir),
+            "--output",
+            str(output_dir),
         ]
 
         with patch("sys.argv", test_args):
@@ -241,16 +254,19 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--instruments", "invalid_instrument,another_invalid",
-            "--export", "midi",
+            "--output",
+            str(output_dir),
+            "--instruments",
+            "invalid_instrument,another_invalid",
+            "--export",
+            "midi",
         ]
 
         with patch("sys.argv", test_args):
             # Should still work but substitute valid instruments
             try:
                 main()
-            except SystemExit as e:
+            except SystemExit:
                 # Might succeed with warnings, or fail with validation error
                 pass
 
@@ -263,8 +279,10 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--tempo-range", "invalid:range",
+            "--output",
+            str(output_dir),
+            "--tempo-range",
+            "invalid:range",
         ]
 
         with patch("sys.argv", test_args):
@@ -281,9 +299,12 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(test_midi),
-            "--output", str(output_dir),
-            "--duration-seconds", "5",
-            "--export", "midi",
+            "--output",
+            str(output_dir),
+            "--duration-seconds",
+            "5",
+            "--export",
+            "midi",
             "--verbose",
         ]
 
@@ -307,10 +328,13 @@ class TestCLISmoke:
             "musicgen",
             "generate",
             str(temp_dir),
-            "--output", str(output_dir),
+            "--output",
+            str(output_dir),
             "--batch",
-            "--duration-seconds", "5",
-            "--export", "midi",
+            "--duration-seconds",
+            "5",
+            "--export",
+            "midi",
         ]
 
         with patch("sys.argv", test_args):
@@ -321,7 +345,9 @@ class TestCLISmoke:
 
         # Should have created output for multiple files
         output_subdirs = [d for d in output_dir.iterdir() if d.is_dir()]
-        assert len(output_subdirs) >= 3, "Batch processing didn't create expected outputs"
+        assert len(output_subdirs) >= 3, (
+            "Batch processing didn't create expected outputs"
+        )
 
 
 class TestCLIParameterParsing:
@@ -345,9 +371,12 @@ class TestCLIParameterParsing:
                 "musicgen",
                 "generate",
                 str(test_midi),
-                "--output", str(output_dir),
-                "--instruments", instruments_str,
-                "--export", "midi",
+                "--output",
+                str(output_dir),
+                "--instruments",
+                instruments_str,
+                "--export",
+                "midi",
             ]
 
             with patch("sys.argv", test_args):
@@ -374,8 +403,10 @@ class TestCLIParameterParsing:
                 "musicgen",
                 "generate",
                 str(test_midi),
-                "--output", str(output_dir),
-                "--export", formats_str,
+                "--output",
+                str(output_dir),
+                "--export",
+                formats_str,
             ]
 
             with patch("sys.argv", test_args):
@@ -399,9 +430,12 @@ class TestCLIParameterParsing:
                 "musicgen",
                 "generate",
                 str(test_midi),
-                "--output", str(output_dir),
-                "--duration-seconds", str(duration),
-                "--export", "midi",
+                "--output",
+                str(output_dir),
+                "--duration-seconds",
+                str(duration),
+                "--export",
+                "midi",
             ]
 
             with patch("sys.argv", test_args):
@@ -426,10 +460,14 @@ class TestCLIParameterParsing:
                 "musicgen",
                 "generate",
                 str(test_midi),
-                "--output", str(output_dir),
-                "--voices", str(voices),
-                "--instruments", ",".join(instruments),
-                "--export", "midi",
+                "--output",
+                str(output_dir),
+                "--voices",
+                str(voices),
+                "--instruments",
+                ",".join(instruments),
+                "--export",
+                "midi",
             ]
 
             with patch("sys.argv", test_args):

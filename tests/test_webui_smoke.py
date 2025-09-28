@@ -5,14 +5,17 @@ These tests ensure that the web UI can be created and its core
 functions work without actually launching a browser.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-import pretty_midi
 
-from musicgen.webui import create_interface, process_generation
+import pytest
+
 from musicgen.config import WebUIConfig
+
+# Import pretty_midi from our module (which includes mock support)
+from musicgen.io_files import pretty_midi
+from musicgen.webui import create_interface, process_generation
 
 
 def create_test_midi_file(file_path: Path) -> None:
@@ -20,9 +23,7 @@ def create_test_midi_file(file_path: Path) -> None:
     midi_data = pretty_midi.PrettyMIDI(initial_tempo=120)
 
     # Add time signature
-    midi_data.time_signature_changes.append(
-        pretty_midi.TimeSignature(4, 4, 0)
-    )
+    midi_data.time_signature_changes.append(pretty_midi.TimeSignature(4, 4, 0))
 
     # Create piano instrument
     piano = pretty_midi.Instrument(program=0)
@@ -31,10 +32,7 @@ def create_test_midi_file(file_path: Path) -> None:
     scale_notes = [60, 62, 64, 65, 67, 69, 71, 72]
     for i, pitch in enumerate(scale_notes):
         note = pretty_midi.Note(
-            velocity=80,
-            pitch=pitch,
-            start=i * 0.5,
-            end=i * 0.5 + 0.4
+            velocity=80, pitch=pitch, start=i * 0.5, end=i * 0.5 + 0.4
         )
         piano.notes.append(note)
 
@@ -78,11 +76,7 @@ class TestWebUICreation:
 
     def test_create_interface_custom_config(self):
         """Test creating interface with custom configuration."""
-        config = WebUIConfig(
-            host="0.0.0.0",
-            port=8080,
-            debug=True
-        )
+        config = WebUIConfig(host="0.0.0.0", port=8080, debug=True)
         interface = create_interface(config)
         assert interface is not None
 
@@ -115,7 +109,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         # Should return tuple of outputs
@@ -144,7 +138,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         # Should return error
@@ -168,7 +162,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         # Should return error
@@ -192,7 +186,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=[]  # No export formats
+            export_formats=[],  # No export formats
         )
 
         # Should return error
@@ -216,7 +210,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         # Should handle multiple instruments
@@ -241,7 +235,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         assert isinstance(result, tuple)
@@ -264,7 +258,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         assert isinstance(result, tuple)
@@ -287,7 +281,7 @@ class TestWebUIProcessing:
             key_mode="specified",
             musical_key="A minor",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         assert isinstance(result, tuple)
@@ -313,7 +307,7 @@ class TestWebUIProcessing:
                 key_mode="auto",
                 musical_key="C major",
                 seed=42,
-                export_formats=["midi"]
+                export_formats=["midi"],
             )
 
             assert isinstance(result, tuple)
@@ -337,7 +331,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         assert isinstance(result, tuple)
@@ -357,7 +351,7 @@ class TestWebUIProcessing:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         assert isinstance(result, tuple)
@@ -384,7 +378,7 @@ class TestWebUIErrorHandling:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         # Should handle invalid MIDI gracefully
@@ -408,7 +402,7 @@ class TestWebUIErrorHandling:
             key_mode="auto",
             musical_key="C major",
             seed=42,
-            export_formats=["midi"]
+            export_formats=["midi"],
         )
 
         assert isinstance(result, tuple)
@@ -429,7 +423,7 @@ class TestWebUIErrorHandling:
             "key_mode": "auto",
             "musical_key": "C major",
             "seed": 123,  # Fixed seed
-            "export_formats": ["midi"]
+            "export_formats": ["midi"],
         }
 
         result1 = process_generation(**params)

@@ -1,37 +1,104 @@
 """
-Audio synthesis for MusicGen using FluidSynth.
+Audio synthesis for MusicGen using pure Python and FluidSynth.
 
 This module handles:
-- MIDI to audio rendering using SoundFonts
+- MIDI to audio rendering using pure Python synthesis (preferred)
+- MIDI to audio rendering using SoundFonts and FluidSynth (fallback)
 - Audio normalization and processing
 - Format conversion (WAV to MP3)
 """
 
+import logging
 import os
+import sys
 import tempfile
-from pathlib import Path
-from typing import Optional, Tuple
 import warnings
+from pathlib import Path
 
 import numpy as np
-import pretty_midi
+import mido
 
+from .audio_types import (
+    DEFAULT_SAMPLE_RATE,
+    AudioCapability,
+    AudioInfo,
+    DependencyError,
+    FluidSynthError,
+    SynthesisError,
+    detect_fluidsynth_path,
+    is_capability_available,
+    require_capability,
+    warn_missing_capability,
+)
+
+
+# Enhanced FluidSynth detection with environment variable support
+def _setup_fluidsynth_path():
+    """Setup FluidSynth path from environment variables or detection."""
+    fluidsynth_path = detect_fluidsynth_path()
+    if fluidsynth_path and sys.platform == "win32":
+        # Add FluidSynth path to system PATH for Windows
+        lib_path = fluidsynth_path / "lib"
+        bin_path = fluidsynth_path / "bin"
+
+        current_path = os.environ.get("PATH", "")
+        paths_to_add = []
+
+        if lib_path.exists():
+            paths_to_add.append(str(lib_path))
+        if bin_path.exists():
+            paths_to_add.append(str(bin_path))
+
+        if paths_to_add:
+            new_path = os.pathsep.join(paths_to_add + [current_path])
+            os.environ["PATH"] = new_path
+
+
+# Setup FluidSynth path before imports
+_setup_fluidsynth_path()
+
+# Handle pretty_midi import - fail fast when needed
+try:
+    import pretty_midi
+
+    PRETTY_MIDI_AVAILABLE = True
+except (ImportError, FileNotFoundError) as e:
+    PRETTY_MIDI_AVAILABLE = False
+    # Store error for later fail-fast behavior
+    _PRETTY_MIDI_ERROR = e
+
+    # Create minimal stub for type hints only
+    class _StubPrettyMIDI:
+        class PrettyMIDI:
+            pass
+        class Instrument:
+            pass
+        class Note:
+            pass
+
+    pretty_midi = _StubPrettyMIDI()
+
+# Handle FluidSynth import - fail fast when needed
 try:
     import fluidsynth
+
     FLUIDSYNTH_AVAILABLE = True
-except ImportError:
+except (ImportError, FileNotFoundError) as e:
     FLUIDSYNTH_AVAILABLE = False
-    warnings.warn(
-        "FluidSynth not available. Audio synthesis will be disabled. "
-        "Install with: pip install pyfluidsynth"
-    )
+    # Store error for later fail-fast behavior
+    _FLUIDSYNTH_ERROR = e
+
+    # Create minimal stub for type hints only
+    class _StubFluidSynth:
+        class Synth:
+            pass
+
+    fluidsynth = _StubFluidSynth()
 
 from .config import MusicGenConfig
 
-
-class SynthesisError(Exception):
-    """Exception raised during audio synthesis."""
-    pass
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def check_fluidsynth_available() -> bool:
@@ -41,7 +108,7 @@ def check_fluidsynth_available() -> bool:
     Returns:
         True if FluidSynth is available, False otherwise
     """
-    return FLUIDSYNTH_AVAILABLE
+    return is_capability_available(AudioCapability.AUDIO_SYNTHESIS)
 
 
 def validate_soundfont(soundfont_path: Path) -> bool:
@@ -73,9 +140,9 @@ def validate_soundfont(soundfont_path: Path) -> bool:
 
 
 def render_midi_to_audio(
-    midi_data: pretty_midi.PrettyMIDI,
+    midi_data: "pretty_midi.PrettyMIDI",
     soundfont_path: Path,
-    sample_rate: int = 44100
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
 ) -> np.ndarray:
     """
     Render MIDI data to audio using FluidSynth.
@@ -90,10 +157,13 @@ def render_midi_to_audio(
 
     Raises:
         SynthesisError: If synthesis fails
+        FluidSynthError: If FluidSynth-specific issues occur
     """
-    if not FLUIDSYNTH_AVAILABLE:
-        raise SynthesisError(
-            "FluidSynth is not available. Install with: pip install pyfluidsynth"
+    if not check_fluidsynth_available():
+        raise FluidSynthError(
+            "FluidSynth is not available. "
+            + "Install FluidSynth system package and pyfluidsynth. "
+            + "Set FLUIDSYNTH_ROOT environment variable if needed."
         )
 
     if not validate_soundfont(soundfont_path):
@@ -113,7 +183,10 @@ def render_midi_to_audio(
             # Load SoundFont
             sfid = fs.sfload(str(soundfont_path))
             if sfid == -1:
-                raise SynthesisError(f"Failed to load SoundFont: {soundfont_path}")
+                raise FluidSynthError(
+                    f"Failed to load SoundFont: {soundfont_path}. "
+                    f"Check if file is valid and accessible."
+                )
 
             # Set up channels and instruments
             _setup_midi_channels(fs, midi_data, sfid)
@@ -133,14 +206,14 @@ def render_midi_to_audio(
             except Exception:
                 pass
 
+    except FluidSynthError:
+        raise  # Re-raise FluidSynth-specific errors
     except Exception as e:
         raise SynthesisError(f"Audio synthesis failed: {e}")
 
 
 def _setup_midi_channels(
-    synth: "fluidsynth.Synth",
-    midi_data: pretty_midi.PrettyMIDI,
-    soundfont_id: int
+    synth: "fluidsynth.Synth", midi_data: pretty_midi.PrettyMIDI, soundfont_id: int
 ) -> None:
     """
     Set up MIDI channels with appropriate instruments.
@@ -160,9 +233,7 @@ def _setup_midi_channels(
 
 
 def _render_midi_events(
-    synth: "fluidsynth.Synth",
-    midi_data: pretty_midi.PrettyMIDI,
-    sample_rate: int
+    synth: "fluidsynth.Synth", midi_data: pretty_midi.PrettyMIDI, sample_rate: int
 ) -> np.ndarray:
     """
     Render MIDI events to audio.
@@ -180,7 +251,9 @@ def _render_midi_events(
     if total_duration <= 0:
         return np.zeros((1024, 2), dtype=np.float32)
 
-    total_samples = int(total_duration * sample_rate) + sample_rate  # Add 1 second buffer
+    total_samples = (
+        int(total_duration * sample_rate) + sample_rate
+    )  # Add 1 second buffer
 
     # Collect all MIDI events with timing
     events = []
@@ -193,22 +266,26 @@ def _render_midi_events(
         # Add note events
         for note in instrument.notes:
             # Note on
-            events.append({
-                "time": note.start,
-                "type": "note_on",
-                "channel": channel,
-                "pitch": note.pitch,
-                "velocity": note.velocity
-            })
+            events.append(
+                {
+                    "time": note.start,
+                    "type": "note_on",
+                    "channel": channel,
+                    "pitch": note.pitch,
+                    "velocity": note.velocity,
+                }
+            )
 
             # Note off
-            events.append({
-                "time": note.end,
-                "type": "note_off",
-                "channel": channel,
-                "pitch": note.pitch,
-                "velocity": 0
-            })
+            events.append(
+                {
+                    "time": note.end,
+                    "type": "note_off",
+                    "channel": channel,
+                    "pitch": note.pitch,
+                    "velocity": 0,
+                }
+            )
 
     # Sort events by time
     events.sort(key=lambda x: x["time"])
@@ -251,9 +328,7 @@ def _render_midi_events(
 
 
 def normalize_audio(
-    audio_data: np.ndarray,
-    target_db: float = -1.0,
-    fade_duration: float = 0.01
+    audio_data: np.ndarray, target_db: float = -1.0, fade_duration: float = 0.01
 ) -> np.ndarray:
     """
     Normalize audio to target level and apply fade in/out.
@@ -293,9 +368,7 @@ def normalize_audio(
 
 
 def _apply_fade(
-    audio_data: np.ndarray,
-    fade_duration: float,
-    sample_rate: int = 44100
+    audio_data: np.ndarray, fade_duration: float, sample_rate: int = 44100
 ) -> np.ndarray:
     """
     Apply fade in and fade out to audio.
@@ -332,10 +405,112 @@ def _apply_fade(
     return audio_data
 
 
+def _midi_note_to_freq(note_number: int) -> float:
+    """Convert MIDI note number to frequency in Hz."""
+    return 440.0 * (2.0 ** ((note_number - 69) / 12.0))
+
+
+def _generate_sine_wave(
+    frequency: float, duration: float, sample_rate: int = 44100, amplitude: float = 0.1
+) -> np.ndarray:
+    """Generate a sine wave for a given frequency and duration."""
+    frames = int(duration * sample_rate)
+    t = np.arange(frames) / sample_rate
+    return amplitude * np.sin(2 * np.pi * frequency * t)
+
+
+def synthesize_midi_with_mido(
+    midi_file_path: Path, sample_rate: int = DEFAULT_SAMPLE_RATE
+) -> np.ndarray:
+    """
+    Synthesize MIDI file to audio using mido and numpy only.
+
+    This is a simple synthesizer that uses sine waves for each note.
+    It works without requiring pretty_midi or FluidSynth dependencies.
+
+    Args:
+        midi_file_path: Path to MIDI file
+        sample_rate: Audio sample rate
+
+    Returns:
+        Audio data as numpy array (mono)
+    """
+    logger.info("Using mido-based audio synthesis")
+
+    # Load MIDI file
+    mid = mido.MidiFile(str(midi_file_path))
+
+    # Calculate total duration in seconds
+    total_ticks = 0
+    for track in mid.tracks:
+        track_ticks = sum(msg.time for msg in track)
+        total_ticks = max(total_ticks, track_ticks)
+
+    # Convert ticks to seconds
+    tempo = 500000  # Default tempo (120 BPM)
+    for track in mid.tracks:
+        for msg in track:
+            if msg.type == 'set_tempo':
+                tempo = msg.tempo
+                break
+
+    seconds_per_tick = tempo / (1000000.0 * mid.ticks_per_beat)
+    total_duration = total_ticks * seconds_per_tick
+
+    if total_duration <= 0:
+        total_duration = 4.0  # Default 4 seconds if no duration detected
+
+    # Create audio buffer
+    audio_frames = int(total_duration * sample_rate)
+    audio_data = np.zeros(audio_frames)
+
+    # Process each track
+    for track in mid.tracks:
+        # Track active notes and their start times
+        active_notes = {}
+        current_time = 0.0
+
+        for msg in track:
+            # Update current time
+            current_time += msg.time * seconds_per_tick
+
+            if msg.type == 'note_on' and msg.velocity > 0:
+                # Start note
+                active_notes[msg.note] = current_time
+
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                # End note
+                if msg.note in active_notes:
+                    start_time = active_notes[msg.note]
+                    duration = current_time - start_time
+
+                    if duration > 0:
+                        # Generate note audio
+                        frequency = _midi_note_to_freq(msg.note)
+                        note_audio = _generate_sine_wave(frequency, duration, sample_rate)
+
+                        # Add to audio buffer
+                        start_frame = int(start_time * sample_rate)
+                        end_frame = start_frame + len(note_audio)
+
+                        if end_frame <= len(audio_data):
+                            audio_data[start_frame:end_frame] += note_audio
+
+                    del active_notes[msg.note]
+
+    # Normalize audio to prevent clipping
+    if np.max(np.abs(audio_data)) > 0:
+        audio_data = audio_data / np.max(np.abs(audio_data)) * 0.8
+
+    # Convert to stereo for consistency with other synthesis methods
+    stereo_audio = np.column_stack([audio_data, audio_data])
+
+    return stereo_audio.astype(np.float32)
+
+
 def synthesize_midi(
-    midi_data: pretty_midi.PrettyMIDI,
-    config: MusicGenConfig
-) -> Optional[np.ndarray]:
+    midi_data: "pretty_midi.PrettyMIDI", config: MusicGenConfig
+) -> np.ndarray:
     """
     Synthesize MIDI data to audio according to configuration.
 
@@ -344,40 +519,59 @@ def synthesize_midi(
         config: Configuration containing synthesis parameters
 
     Returns:
-        Synthesized audio data, or None if synthesis is not possible
+        Synthesized audio data
 
     Raises:
+        DependencyError: If audio synthesis dependencies are missing
         SynthesisError: If synthesis fails
+        FluidSynthError: If FluidSynth-specific issues occur
     """
-    if not FLUIDSYNTH_AVAILABLE:
-        warnings.warn("FluidSynth not available, skipping audio synthesis")
-        return None
+    # Require audio synthesis capability - fail fast if not available
+    require_capability(AudioCapability.AUDIO_SYNTHESIS, "audio synthesis")
 
-    if config.soundfont_path is None:
-        warnings.warn("No SoundFont specified, skipping audio synthesis")
-        return None
+    # Try pure Python synthesis first (preferred method)
+    try:
+        import soundfile
+        import scipy
 
-    if not validate_soundfont(config.soundfont_path):
-        raise SynthesisError(f"Invalid SoundFont: {config.soundfont_path}")
+        from .pure_synthesis import synthesize_pretty_midi
 
-    # Render MIDI to audio
-    raw_audio = render_midi_to_audio(
-        midi_data,
-        config.soundfont_path,
-        config.sample_rate
-    )
+        logger.info("Using pure Python audio synthesis")
+        raw_audio = synthesize_pretty_midi(midi_data, config.sample_rate)
+
+    except (ImportError, Exception) as e:
+        logger.info(f"Pure Python synthesis not available ({e}), trying FluidSynth")
+
+        # Fallback to FluidSynth synthesis
+        if config.soundfont_path is None:
+            raise SynthesisError(
+                "SoundFont required for FluidSynth synthesis. "
+                "Provide a .sf2 file path in config.soundfont_path, "
+                "or install pure Python synthesis dependencies: "
+                "uv sync --extra audio-synthesis"
+            )
+
+        if not validate_soundfont(config.soundfont_path):
+            raise FluidSynthError(f"Invalid SoundFont: {config.soundfont_path}")
+
+        # Render MIDI to audio using FluidSynth
+        raw_audio = render_midi_to_audio(
+            midi_data, config.soundfont_path, config.sample_rate
+        )
 
     # Normalize and process audio
     processed_audio = normalize_audio(
         raw_audio,
         target_db=-1.0,  # Leave some headroom
-        fade_duration=0.01  # 10ms fade
+        fade_duration=0.01,  # 10ms fade
     )
 
     return processed_audio
 
 
-def create_silent_audio(duration_seconds: float, sample_rate: int = 44100) -> np.ndarray:
+def create_silent_audio(
+    duration_seconds: float, sample_rate: int = 44100
+) -> np.ndarray:
     """
     Create silent audio for testing or fallback purposes.
 
@@ -392,7 +586,7 @@ def create_silent_audio(duration_seconds: float, sample_rate: int = 44100) -> np
     return np.zeros((samples, 2), dtype=np.float32)
 
 
-def get_audio_info(audio_data: np.ndarray, sample_rate: int) -> dict:
+def get_audio_info(audio_data: np.ndarray, sample_rate: int) -> AudioInfo:
     """
     Get information about audio data.
 
@@ -401,30 +595,23 @@ def get_audio_info(audio_data: np.ndarray, sample_rate: int) -> dict:
         sample_rate: Sample rate
 
     Returns:
-        Dictionary with audio information
+        AudioInfo object with detailed information
     """
     if audio_data.size == 0:
-        return {
-            "duration": 0.0,
-            "channels": 0,
-            "samples": 0,
-            "peak_level": 0.0,
-            "rms_level": 0.0
-        }
+        return AudioInfo(duration=0.0, channels=0, samples=0, sample_rate=sample_rate)
 
     samples = len(audio_data)
     duration = samples / sample_rate
     channels = audio_data.shape[1] if len(audio_data.shape) > 1 else 1
 
     peak_level = float(np.abs(audio_data).max())
-    rms_level = float(np.sqrt(np.mean(audio_data ** 2)))
+    rms_level = float(np.sqrt(np.mean(audio_data**2)))
 
-    return {
-        "duration": duration,
-        "channels": channels,
-        "samples": samples,
-        "peak_level": peak_level,
-        "rms_level": rms_level,
-        "peak_db": 20 * np.log10(peak_level) if peak_level > 0 else -np.inf,
-        "rms_db": 20 * np.log10(rms_level) if rms_level > 0 else -np.inf
-    }
+    return AudioInfo(
+        duration=duration,
+        channels=channels,
+        samples=samples,
+        sample_rate=sample_rate,
+        peak_level=peak_level,
+        rms_level=rms_level,
+    )
