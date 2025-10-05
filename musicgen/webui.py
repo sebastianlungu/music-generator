@@ -9,7 +9,6 @@ This module provides a user-friendly web interface for:
 """
 
 import logging
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -97,17 +96,14 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                 gr.Markdown("### 📁 Files")
                 with gr.Row():
                     midi_file = gr.File(
-                        label="MIDI File",
-                        file_count="single",
-                        show_label=True,
-                        scale=3
+                        label="MIDI File", file_count="single", show_label=True, scale=3
                     )
                     soundfont_file = gr.File(
                         label="SoundFont (Optional)",
                         file_types=[".sf2"],
                         file_count="single",
                         show_label=True,
-                        scale=2
+                        scale=2,
                     )
 
                 # Generation parameters
@@ -120,7 +116,7 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                         value=120,
                         step=10,
                         label="Duration (sec)",
-                        scale=1
+                        scale=1,
                     )
                     voices = gr.Slider(
                         minimum=1, maximum=8, value=2, step=1, label="Voices", scale=1
@@ -131,13 +127,13 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                         choices=[inst.value for inst in Instrument],
                         value=["piano"],
                         label="Instruments",
-                        scale=2
+                        scale=2,
                     )
                     style = gr.Textbox(
                         value="classical",
                         label="Style",
                         placeholder="classical, jazz, rock, ambient",
-                        scale=1
+                        scale=1,
                     )
 
                 # Musical parameters
@@ -192,7 +188,7 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                             choices=[fmt.value for fmt in ExportFormat],
                             value=["midi", "wav", "mp3"],
                             label="Export",
-                            scale=2
+                            scale=2,
                         )
 
                 # Generate button
@@ -205,7 +201,10 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                 gr.Markdown("### 📊 Results")
 
                 status_text = gr.Textbox(
-                    label="Status", value="Ready to generate...", interactive=False, max_lines=1
+                    label="Status",
+                    value="Ready to generate...",
+                    interactive=False,
+                    max_lines=1,
                 )
 
                 # Analysis results
@@ -215,7 +214,7 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                         headers=["Property", "Value"],
                         datatype=["str", "str"],
                         elem_classes=["analysis-table"],
-                        scale=2
+                        scale=2,
                     )
                     # Audio preview
                     audio_output = gr.Audio(label="Preview", visible=False, scale=1)
@@ -228,7 +227,9 @@ def create_interface(config: WebUIConfig | None = None) -> gr.Blocks:
                     download_mp3 = gr.File(label="MP3", visible=False, scale=1)
 
                 with gr.Row():
-                    download_analysis = gr.File(label="Analysis", visible=False, scale=1)
+                    download_analysis = gr.File(
+                        label="Analysis", visible=False, scale=1
+                    )
                     download_report = gr.File(label="Report", visible=False, scale=1)
 
         # Event handlers
@@ -331,6 +332,7 @@ def process_generation(
 
         # Create output directory for processing (accessible to user)
         import datetime
+
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         output_base = Path("webui_output")
         output_base.mkdir(exist_ok=True)
@@ -341,7 +343,7 @@ def process_generation(
         # Save uploaded MIDI file
         midi_path = temp_dir / "input.mid"
         # In Gradio 5.x, midi_file is either a file path string or a file object
-        if hasattr(midi_file, 'name'):
+        if hasattr(midi_file, "name"):
             # It's a file object with .name attribute
             source_path = midi_file.name
         else:
@@ -358,7 +360,7 @@ def process_generation(
         if soundfont_file is not None:
             soundfont_path = temp_dir / "soundfont.sf2"
             # In Gradio 5.x, soundfont_file is either a file path string or a file object
-            if hasattr(soundfont_file, 'name'):
+            if hasattr(soundfont_file, "name"):
                 # It's a file object with .name attribute
                 source_sf_path = soundfont_file.name
             else:
@@ -503,7 +505,7 @@ def _success_response(
 
 
 def launch_web_ui(
-    host: str = "127.0.0.1", port: int = 7860, share: bool = False, debug: bool = False
+    host: str = "127.0.0.1", port: int = 9957, share: bool = False, debug: bool = False
 ) -> None:
     """
     Launch the web UI.
@@ -529,7 +531,7 @@ def launch_web_ui(
             show_error=True,
             quiet=not debug,
             inbrowser=False,  # Don't auto-open browser
-            show_api=debug,   # Show API docs in debug mode
+            show_api=debug,  # Show API docs in debug mode
         )
     except KeyboardInterrupt:
         logger.info("Web UI stopped by user")
@@ -547,7 +549,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="MusicGen Web UI")
     parser.add_argument("--host", default="127.0.0.1", help="Host address")
-    parser.add_argument("--port", type=int, default=7860, help="Port number")
+    parser.add_argument("--port", type=int, default=9957, help="Port number")
     parser.add_argument("--share", action="store_true", help="Create shareable link")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 

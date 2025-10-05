@@ -169,3 +169,6 @@ dmypy.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Claude Code settings
+.claude/settings.local.json

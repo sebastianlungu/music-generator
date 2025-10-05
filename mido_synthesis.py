@@ -6,10 +6,10 @@ without requiring pretty_midi or FluidSynth dependencies.
 """
 
 import math
+import wave
+
 import mido
 import numpy as np
-import wave
-import struct
 
 
 def midi_note_to_freq(note_number):
@@ -51,7 +51,7 @@ def synthesize_midi_file(midi_file_path, output_wav_path, sample_rate=44100):
     tempo = 500000  # Default tempo (120 BPM)
     for track in mid.tracks:
         for msg in track:
-            if msg.type == 'set_tempo':
+            if msg.type == "set_tempo":
                 tempo = msg.tempo
                 break
 
@@ -79,11 +79,13 @@ def synthesize_midi_file(midi_file_path, output_wav_path, sample_rate=44100):
             # Update current time
             current_time += msg.time * seconds_per_tick
 
-            if msg.type == 'note_on' and msg.velocity > 0:
+            if msg.type == "note_on" and msg.velocity > 0:
                 # Start note
                 active_notes[msg.note] = current_time
 
-            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+            elif msg.type == "note_off" or (
+                msg.type == "note_on" and msg.velocity == 0
+            ):
                 # End note
                 if msg.note in active_notes:
                     start_time = active_notes[msg.note]
@@ -92,7 +94,9 @@ def synthesize_midi_file(midi_file_path, output_wav_path, sample_rate=44100):
                     if duration > 0:
                         # Generate note audio
                         frequency = midi_note_to_freq(msg.note)
-                        note_audio = generate_sine_wave(frequency, duration, sample_rate, amplitude=0.1)
+                        note_audio = generate_sine_wave(
+                            frequency, duration, sample_rate, amplitude=0.1
+                        )
 
                         # Add to audio buffer
                         start_frame = int(start_time * sample_rate)
@@ -111,7 +115,7 @@ def synthesize_midi_file(midi_file_path, output_wav_path, sample_rate=44100):
     audio_data_int = (audio_data * 32767).astype(np.int16)
 
     # Write WAV file
-    with wave.open(output_wav_path, 'w') as wav_file:
+    with wave.open(output_wav_path, "w") as wav_file:
         wav_file.setnchannels(1)  # Mono
         wav_file.setsampwidth(2)  # 16-bit
         wav_file.setframerate(sample_rate)

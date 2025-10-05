@@ -201,6 +201,7 @@ class TestAnalysis:
         # Pitch histogram should not include drum notes
         histogram = calculate_pitch_histogram(midi_data)
         # Should still be based only on piano notes
+        assert len(histogram) == 12  # Should still have 12 pitch classes
 
 
 class TestAnalysisEdgeCases:

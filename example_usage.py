@@ -31,7 +31,7 @@ def create_sample_midi(file_path: Path) -> None:
     # C major scale
     notes = [60, 62, 64, 65, 67, 69, 71, 72]  # C4 to C5
 
-    for i, note in enumerate(notes):
+    for _i, note in enumerate(notes):
         # Note on
         track.append(mido.Message("note_on", channel=0, note=note, velocity=80, time=0))
         # Note off after 480 ticks (quarter note at 480 PPQ)

@@ -14,11 +14,9 @@ from pathlib import Path
 from . import analysis, arrange, io_files, synthesis
 from .audio_types import (
     AudioCapability,
-    create_installation_instructions,
     get_installation_mode,
     get_missing_dependencies,
     is_capability_available,
-    require_capability,
     validate_export_formats,
 )
 from .config import AnalysisResult, ArrangementConfig, MusicGenConfig
@@ -129,14 +127,18 @@ def generate_arrangement(
             logger.info("Audio synthesis required for requested export formats")
 
             # Use mido-based synthesis with the saved MIDI file
-            midi_file_path = output_files.get('midi')
+            midi_file_path = output_files.get("midi")
             if midi_file_path and midi_file_path.exists():
                 try:
-                    audio_data = synthesis.synthesize_midi_with_mido(midi_file_path, config.sample_rate)
+                    audio_data = synthesis.synthesize_midi_with_mido(
+                        midi_file_path, config.sample_rate
+                    )
                     logger.info("Mido-based audio synthesis complete")
                 except Exception as e:
                     logger.error(f"Audio synthesis failed: {e}")
-                    raise synthesis.SynthesisError(f"Audio synthesis failed: {e}")
+                    raise synthesis.SynthesisError(
+                        f"Audio synthesis failed: {e}"
+                    ) from e
             else:
                 raise synthesis.SynthesisError("MIDI file not available for synthesis")
         else:
@@ -145,7 +147,12 @@ def generate_arrangement(
         # Update output files with audio data if generated
         if audio_data is not None:
             output_files = io_files.write_output_files(
-                output_dir, config, analysis_result, generated_midi, audio_data, rationale
+                output_dir,
+                config,
+                analysis_result,
+                generated_midi,
+                audio_data,
+                rationale,
             )
 
         logger.info(f"Generation complete. Files written: {list(output_files.keys())}")

@@ -5,6 +5,7 @@ These tests ensure that arrangement generation produces valid
 musical output within specified parameters.
 """
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,8 +36,12 @@ def create_test_config(
     if instruments is None:
         instruments = [Instrument.PIANO, Instrument.GUITAR]
 
+    # Create a temp file that exists for validation
+    temp_file = Path(tempfile.gettempdir()) / "musicgen_test.mid"
+    temp_file.touch(exist_ok=True)
+
     return MusicGenConfig(
-        input_path=Path("test.mid"),  # Dummy path
+        input_path=temp_file,
         duration_seconds=duration,
         instruments=instruments,
         voices=voices,
@@ -334,7 +339,9 @@ class TestArrangementGeneration:
         # Should have same number of instruments and notes
         assert len(midi_data1.instruments) == len(midi_data2.instruments)
 
-        for inst1, inst2 in zip(midi_data1.instruments, midi_data2.instruments, strict=False):
+        for inst1, inst2 in zip(
+            midi_data1.instruments, midi_data2.instruments, strict=False
+        ):
             assert len(inst1.notes) == len(inst2.notes)
 
     def test_arrangement_note_validity(self):

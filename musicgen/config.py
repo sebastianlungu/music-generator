@@ -8,7 +8,7 @@ including CLI parameters, analysis settings, and generation options.
 from enum import Enum
 from pathlib import Path
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ExportFormat(str, Enum):
@@ -103,8 +103,8 @@ class MusicGenConfig(BaseModel):
     )
     instruments: list[Instrument] = Field(
         default=[Instrument.PIANO],
-        min_items=1,
-        max_items=8,
+        min_length=1,
+        max_length=8,
         description="Instruments to use in arrangement",
     )
     voices: int = Field(default=1, ge=1, le=8, description="Number of voices/parts")
@@ -136,7 +136,8 @@ class MusicGenConfig(BaseModel):
     bit_depth: int = Field(default=24, description="Audio bit depth")
     mp3_bitrate: int = Field(default=192, description="MP3 bitrate in kbps")
 
-    @validator("tempo_range")
+    @field_validator("tempo_range")
+    @classmethod
     def validate_tempo_range(cls, v):
         """Ensure tempo range is valid."""
         if v is not None:
@@ -147,21 +148,23 @@ class MusicGenConfig(BaseModel):
                 raise ValueError("Tempo values must be between 60 and 200 BPM")
         return v
 
-    @validator("tempo_bpm", "tempo_range")
-    def validate_tempo_exclusivity(cls, v, values):
+    @model_validator(mode="after")
+    def validate_tempo_exclusivity(self):
         """Ensure only one tempo parameter is set."""
-        if v is not None and values.get("tempo_bpm") is not None:
+        if self.tempo_bpm is not None and self.tempo_range is not None:
             raise ValueError("Cannot set both tempo_bpm and tempo_range")
-        return v
+        return self
 
-    @validator("input_path")
+    @field_validator("input_path")
+    @classmethod
     def validate_input_path(cls, v):
         """Ensure input path exists."""
         if not v.exists():
             raise ValueError(f"Input path does not exist: {v}")
         return v
 
-    @validator("soundfont_path")
+    @field_validator("soundfont_path")
+    @classmethod
     def validate_soundfont_path(cls, v):
         """Ensure SoundFont path exists if provided."""
         if v is not None and not v.exists():

@@ -12,24 +12,22 @@ import logging
 import os
 import sys
 import tempfile
-import warnings
 from pathlib import Path
 
-import numpy as np
 import mido
+import numpy as np
 
 from .audio_types import (
     DEFAULT_SAMPLE_RATE,
     AudioCapability,
     AudioInfo,
-    DependencyError,
     FluidSynthError,
     SynthesisError,
     detect_fluidsynth_path,
     is_capability_available,
     require_capability,
-    warn_missing_capability,
 )
+from .config import MusicGenConfig
 
 
 # Enhanced FluidSynth detection with environment variable support
@@ -71,8 +69,10 @@ except (ImportError, FileNotFoundError) as e:
     class _StubPrettyMIDI:
         class PrettyMIDI:
             pass
+
         class Instrument:
             pass
+
         class Note:
             pass
 
@@ -94,8 +94,6 @@ except (ImportError, FileNotFoundError) as e:
             pass
 
     fluidsynth = _StubFluidSynth()
-
-from .config import MusicGenConfig
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -209,7 +207,7 @@ def render_midi_to_audio(
     except FluidSynthError:
         raise  # Re-raise FluidSynth-specific errors
     except Exception as e:
-        raise SynthesisError(f"Audio synthesis failed: {e}")
+        raise SynthesisError(f"Audio synthesis failed: {e}") from e
 
 
 def _setup_midi_channels(
@@ -450,7 +448,7 @@ def synthesize_midi_with_mido(
     tempo = 500000  # Default tempo (120 BPM)
     for track in mid.tracks:
         for msg in track:
-            if msg.type == 'set_tempo':
+            if msg.type == "set_tempo":
                 tempo = msg.tempo
                 break
 
@@ -474,11 +472,13 @@ def synthesize_midi_with_mido(
             # Update current time
             current_time += msg.time * seconds_per_tick
 
-            if msg.type == 'note_on' and msg.velocity > 0:
+            if msg.type == "note_on" and msg.velocity > 0:
                 # Start note
                 active_notes[msg.note] = current_time
 
-            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+            elif msg.type == "note_off" or (
+                msg.type == "note_on" and msg.velocity == 0
+            ):
                 # End note
                 if msg.note in active_notes:
                     start_time = active_notes[msg.note]
@@ -487,7 +487,9 @@ def synthesize_midi_with_mido(
                     if duration > 0:
                         # Generate note audio
                         frequency = _midi_note_to_freq(msg.note)
-                        note_audio = _generate_sine_wave(frequency, duration, sample_rate)
+                        note_audio = _generate_sine_wave(
+                            frequency, duration, sample_rate
+                        )
 
                         # Add to audio buffer
                         start_frame = int(start_time * sample_rate)
@@ -531,9 +533,6 @@ def synthesize_midi(
 
     # Try pure Python synthesis first (preferred method)
     try:
-        import soundfile
-        import scipy
-
         from .pure_synthesis import synthesize_pretty_midi
 
         logger.info("Using pure Python audio synthesis")
@@ -549,10 +548,12 @@ def synthesize_midi(
                 "Provide a .sf2 file path in config.soundfont_path, "
                 "or install pure Python synthesis dependencies: "
                 "uv sync --extra audio-synthesis"
-            )
+            ) from e
 
         if not validate_soundfont(config.soundfont_path):
-            raise FluidSynthError(f"Invalid SoundFont: {config.soundfont_path}")
+            raise FluidSynthError(
+                f"Invalid SoundFont: {config.soundfont_path}"
+            ) from None
 
         # Render MIDI to audio using FluidSynth
         raw_audio = render_midi_to_audio(

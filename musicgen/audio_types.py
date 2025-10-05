@@ -6,6 +6,7 @@ the audio processing pipeline. It provides a central location for audio-related
 constants and capability detection.
 """
 
+import importlib.util
 import os
 import sys
 import warnings
@@ -128,7 +129,7 @@ class AudioSynthesizer(ABC):
     @abstractmethod
     def synthesize(
         self,
-        midi_data: "pretty_midi.PrettyMIDI",  # type: ignore
+        midi_data,  # pretty_midi.PrettyMIDI (avoid undefined name)
         **kwargs,
     ) -> np.ndarray:
         """Synthesize MIDI data to audio."""
@@ -248,38 +249,21 @@ def get_audio_capabilities() -> list[AudioCapability]:
     capabilities = [AudioCapability.MIDI_ONLY]  # Always available
 
     # Check Pure Python synthesis availability (preferred)
-    try:
-        import soundfile
-        import scipy
-        import pretty_midi
-        import numpy
-
+    if all(
+        importlib.util.find_spec(mod)
+        for mod in ["numpy", "pretty_midi", "scipy", "soundfile"]
+    ):
         capabilities.append(AudioCapability.AUDIO_SYNTHESIS)
-    except (ImportError, FileNotFoundError, OSError):
-        # Fallback: Check FluidSynth availability
-        try:
-            import fluidsynth
-            import pretty_midi
-
-            capabilities.append(AudioCapability.AUDIO_SYNTHESIS)
-        except (ImportError, FileNotFoundError, OSError):
-            # Basic fallback: Check mido + numpy availability (minimal synthesis)
-            try:
-                import mido
-                import numpy
-
-                capabilities.append(AudioCapability.AUDIO_SYNTHESIS)
-            except (ImportError, FileNotFoundError, OSError):
-                pass
+    # Fallback: Check FluidSynth availability
+    elif all(importlib.util.find_spec(mod) for mod in ["fluidsynth", "pretty_midi"]):
+        capabilities.append(AudioCapability.AUDIO_SYNTHESIS)
+    # Basic fallback: Check mido + numpy availability (minimal synthesis)
+    elif all(importlib.util.find_spec(mod) for mod in ["mido", "numpy"]):
+        capabilities.append(AudioCapability.AUDIO_SYNTHESIS)
 
     # Check FFmpeg availability for format conversion
-    try:
-        import pydub
-
-        if detect_ffmpeg_path() is not None:
-            capabilities.append(AudioCapability.AUDIO_CONVERSION)
-    except ImportError:
-        pass
+    if importlib.util.find_spec("pydub") and detect_ffmpeg_path() is not None:
+        capabilities.append(AudioCapability.AUDIO_CONVERSION)
 
     # Check if full audio pipeline is available
     if (
@@ -317,20 +301,14 @@ def get_missing_dependencies(capability: AudioCapability) -> list[str]:
     missing = []
 
     if capability in [AudioCapability.AUDIO_SYNTHESIS, AudioCapability.FULL_AUDIO]:
-        try:
-            import fluidsynth
-        except (ImportError, FileNotFoundError, OSError):
+        if not importlib.util.find_spec("fluidsynth"):
             missing.append("pyfluidsynth")
 
-        try:
-            import pretty_midi
-        except (ImportError, FileNotFoundError, OSError):
+        if not importlib.util.find_spec("pretty_midi"):
             missing.append("pretty_midi")
 
     if capability in [AudioCapability.AUDIO_CONVERSION, AudioCapability.FULL_AUDIO]:
-        try:
-            import pydub
-        except ImportError:
+        if not importlib.util.find_spec("pydub"):
             missing.append("pydub")
 
         if detect_ffmpeg_path() is None:
@@ -466,21 +444,18 @@ def validate_export_formats(export_formats: list[str]) -> list[str]:
             validated_formats.append(fmt_lower)
         elif fmt_lower == "wav":
             require_capability(
-                AudioCapability.AUDIO_SYNTHESIS,
-                f"WAV export (requested format: {fmt})"
+                AudioCapability.AUDIO_SYNTHESIS, f"WAV export (requested format: {fmt})"
             )
             validated_formats.append(fmt_lower)
         elif fmt_lower == "mp3":
             require_capability(
-                AudioCapability.FULL_AUDIO,
-                f"MP3 export (requested format: {fmt})"
+                AudioCapability.FULL_AUDIO, f"MP3 export (requested format: {fmt})"
             )
             validated_formats.append(fmt_lower)
         else:
             # For other formats, require full audio pipeline
             require_capability(
-                AudioCapability.FULL_AUDIO,
-                f"audio export (requested format: {fmt})"
+                AudioCapability.FULL_AUDIO, f"audio export (requested format: {fmt})"
             )
             validated_formats.append(fmt_lower)
 
@@ -526,27 +501,33 @@ def create_upgrade_instructions() -> str:
     ]
 
     if current_mode == "midi-only":
-        instructions.extend([
-            "# For basic audio synthesis (WAV export):",
-            "uv sync --extra audio-synthesis",
-            "",
-            "# For full audio pipeline (MP3 export):",
-            "uv sync --extra all",
-            "",
-        ])
+        instructions.extend(
+            [
+                "# For basic audio synthesis (WAV export):",
+                "uv sync --extra audio-synthesis",
+                "",
+                "# For full audio pipeline (MP3 export):",
+                "uv sync --extra all",
+                "",
+            ]
+        )
     elif current_mode in ["audio-synthesis", "audio-conversion"]:
-        instructions.extend([
-            "# For full audio pipeline (MP3 export):",
-            "uv sync --extra all",
-            "",
-        ])
+        instructions.extend(
+            [
+                "# For full audio pipeline (MP3 export):",
+                "uv sync --extra all",
+                "",
+            ]
+        )
 
-    instructions.extend([
-        "📚 Installation options:",
-        "  uv sync                     # MIDI analysis and arrangement only",
-        "  uv sync --extra web-ui      # Add web interface",
-        "  uv sync --extra audio-synthesis  # Add WAV audio synthesis",
-        "  uv sync --extra all         # Full features (audio + web UI)",
-    ])
+    instructions.extend(
+        [
+            "📚 Installation options:",
+            "  uv sync                     # MIDI analysis and arrangement only",
+            "  uv sync --extra web-ui      # Add web interface",
+            "  uv sync --extra audio-synthesis  # Add WAV audio synthesis",
+            "  uv sync --extra all         # Full features (audio + web UI)",
+        ]
+    )
 
     return "\n".join(instructions)

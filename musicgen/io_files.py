@@ -78,7 +78,7 @@ except (ImportError, FileNotFoundError):
             self.resolution = kwargs.get("resolution", 220)
             self.initial_tempo = kwargs.get("initial_tempo", 120.0)
             self.tempo_changes = [MockTempoChange(self.initial_tempo, 0.0)]
-            self.time_signature_changes = [MockTimeSignature(4, 4, 0.0)]
+            self.time_signature_changes = []
 
         def get_end_time(self):
             if not self.instruments:
@@ -427,7 +427,7 @@ def write_output_files(
                 )
                 written_files["wav"] = wav_path
             except Exception as e:
-                warnings.warn(f"Failed to save WAV file: {e}")
+                warnings.warn(f"Failed to save WAV file: {e}", stacklevel=2)
 
         if ExportFormat.MP3 in config.export_formats:
             mp3_path = output_dir / "render.mp3"
@@ -451,9 +451,9 @@ def write_output_files(
 
                 written_files["mp3"] = mp3_path
             except (ConversionError, FFmpegError) as e:
-                warnings.warn(f"Failed to create MP3 file: {e}")
+                warnings.warn(f"Failed to create MP3 file: {e}", stacklevel=2)
             except Exception as e:
-                warnings.warn(f"Unexpected error creating MP3 file: {e}")
+                warnings.warn(f"Unexpected error creating MP3 file: {e}", stacklevel=2)
 
     return written_files
 

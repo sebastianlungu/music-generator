@@ -21,9 +21,10 @@ from .io_files import PRETTY_MIDI_AVAILABLE, pretty_midi
 if not PRETTY_MIDI_AVAILABLE:
     # Enhance mock with analysis-specific attributes
     class MockTimeSignature:
-        def __init__(self, *args, **kwargs):
-            self.numerator = 4
-            self.denominator = 4
+        def __init__(self, numerator=4, denominator=4, time=0.0):
+            self.numerator = numerator
+            self.denominator = denominator
+            self.time = time
 
     # Add time signature support to mock
     pretty_midi.TimeSignature = MockTimeSignature
@@ -73,7 +74,6 @@ def _pretty_midi_to_music21_stream(
         for note in instrument.notes:
             # Convert to music21 note
             music21_note = pretty_midi.note_number_to_name(note.pitch)
-            duration = note.end - note.start
 
             # Add note to stream
             s.insert(note.start, music21_note)
@@ -182,7 +182,7 @@ def detect_tempo(midi_data: "pretty_midi.PrettyMIDI") -> float:
     # First try to get tempo from MIDI tempo changes
     if midi_data.tempo_changes:
         # Use the most common tempo
-        tempos = [change[1] for change in midi_data.tempo_changes]
+        tempos = [change.tempo for change in midi_data.tempo_changes]
         return float(np.median(tempos))
 
     # Fallback: estimate from note onset patterns
@@ -411,7 +411,7 @@ def get_instrument_programs(midi_data: "pretty_midi.PrettyMIDI") -> list[int]:
         if not instrument.is_drum:
             programs.append(instrument.program)
 
-    return sorted(list(set(programs)))
+    return sorted(set(programs))
 
 
 def analyze_midi_file(midi_data: "pretty_midi.PrettyMIDI") -> AnalysisResult:
